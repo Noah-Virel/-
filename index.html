@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>秋山ユニット 月間進捗ダッシュボード【GAS連携】</title>
+<title>ユニット 月間進捗ダッシュボード【GAS連携】</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -74,6 +74,14 @@
   .sec{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
     color:var(--sub);margin-bottom:11px;display:flex;align-items:center;gap:7px}
   .sec::before{content:'';width:4px;height:13px;background:linear-gradient(to bottom,var(--a1),var(--a2));border-radius:2px}
+
+  /* ── TAB ── */
+  .tab-bar{display:flex;gap:6px;background:var(--card2);border-radius:12px;padding:5px;margin-bottom:22px;width:fit-content}
+  .tab-btn{padding:10px 28px;border-radius:9px;border:none;cursor:pointer;font-size:.9rem;font-weight:700;
+    background:transparent;color:var(--sub);transition:all .2s;white-space:nowrap}
+  .tab-btn:hover{color:var(--text);background:rgba(255,255,255,.05)}
+  .tab-btn.tab-active{background:linear-gradient(135deg,var(--a1),#a855f7);color:#fff;
+    box-shadow:0 4px 14px rgba(108,99,255,.4)}
 
   /* KPI */
   .kpi4{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:22px}
@@ -199,7 +207,7 @@
   <div class="hdr-l">
     <div class="hdr-ico">📊</div>
     <div>
-      <h1>秋山ユニット 月間進捗ダッシュボード</h1>
+      <h1>ユニット 月間進捗ダッシュボード</h1>
       <div class="hdr-sub">GAS連携 自動更新版 ｜ <span id="lastUpdate">─</span></div>
     </div>
   </div>
@@ -225,6 +233,12 @@
     </div>
     <button class="copy-btn" onclick="copyGasUrl()">📋 URLをコピー</button>
     <button class="change-btn" onclick="changeGasUrl()">✏️ URL変更</button>
+  </div>
+
+  <!-- TAB BAR -->
+  <div class="tab-bar">
+    <button id="tab-akiyama" class="tab-btn tab-active" onclick="switchTab('akiyama')">🏢 秋山ユニット</button>
+    <button id="tab-ikegami" class="tab-btn" onclick="switchTab('ikegami')">🏢 池上ユニット</button>
   </div>
 
   <!-- KPI -->
@@ -288,9 +302,11 @@
 // ============================================================
 //  CONFIG
 // ============================================================
-const LS_KEY = 'akiyama_gas_url';
+const LS_KEY   = 'akiyama_gas_url';
 const AUTO_MIN = 5;
 let charts = {};
+let currentTab = 'akiyama'; // 'akiyama' | 'ikegami'
+let dataCache  = { akiyama: null, ikegami: null };
 
 // ============================================================
 //  INIT
@@ -301,9 +317,22 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('setupOverlay').style.display = 'none';
     loadData();
   }
-  // pre-fill input if exists
   if (saved) document.getElementById('gasUrlInput').value = saved;
 });
+
+// ============================================================
+//  TAB SWITCH
+// ============================================================
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+  document.getElementById('tab-' + tab).classList.add('tab-active');
+  if (dataCache[tab]) {
+    renderAll(dataCache[tab]);
+  } else {
+    loadData();
+  }
+}
 
 // ============================================================
 //  SETUP
@@ -337,20 +366,23 @@ async function loadData() {
   document.getElementById('loadingScreen').style.display = 'flex';
   document.getElementById('errBanner').style.display = 'none';
 
+  // 現在のタブに応じてsheetパラメータを付与
+  const sheetParam = currentTab === 'ikegami' ? '?sheet=2' : '?sheet=1';
+  const fetchUrl   = gasUrl + sheetParam;
+
   try {
-    // GAS はリダイレクトするので redirect:'follow' が必要
-    const res = await fetch(gasUrl, { redirect: 'follow' });
+    const res = await fetch(fetchUrl, { redirect: 'follow' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
+    dataCache[currentTab] = data;
     renderAll(data);
 
     const ts = data.updatedAt ? new Date(data.updatedAt) : new Date();
     document.getElementById('lastUpdate').textContent =
       '最終更新: ' + ts.toLocaleString('ja-JP', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
 
-    // URL display
     document.getElementById('gasUrlDisplay').textContent = gasUrl;
     document.getElementById('gasUrlDisplay').href = gasUrl;
 
@@ -410,6 +442,7 @@ function renderAll(d) {
   const lv = pct(L.rate), rv = pct(R.rate);
   const total = members.find(m=>m.isTotal) || {};
   const mems  = members.filter(m=>!m.isTotal);
+  const unitName = currentTab === 'ikegami' ? '池上ユニット' : '秋山ユニット';
 
   // ── KPI ──
   document.getElementById('kpiGrid').innerHTML = `
@@ -451,7 +484,7 @@ function renderAll(d) {
 
   document.getElementById('unitSection').innerHTML = `
     <div class="panel">
-      <div class="p-title">🏢 秋山ユニット 組織コミット</div>
+      <div class="p-title">🏢 ${unitName} 組織コミット</div>
       <div style="display:flex;justify-content:space-between;margin-bottom:12px">
         <div><div style="font-size:.72rem;color:var(--sub)">月間目標</div><div style="font-size:1.35rem;font-weight:800">${L.target}</div></div>
         <div style="text-align:right"><div style="font-size:.72rem;color:var(--sub)">進捗率</div>
@@ -469,7 +502,7 @@ function renderAll(d) {
       <tbody>${weekTbl(L.weekly)}</tbody></table>
     </div>
     <div class="panel">
-      <div class="p-title">👤 秋山ユニット 個人コミット</div>
+      <div class="p-title">👤 ${unitName} 個人コミット</div>
       <div style="display:flex;justify-content:space-between;margin-bottom:12px">
         <div><div style="font-size:.72rem;color:var(--sub)">月間目標</div><div style="font-size:1.35rem;font-weight:800">${R.target}</div></div>
         <div style="text-align:right"><div style="font-size:.72rem;color:var(--sub)">進捗率</div>
