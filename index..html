@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>秋山ユニット 月間進捗ダッシュボード【GAS連携】</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:#0f1117; --card:#1a1d27; --card2:#22263a; --border:#2e3250;
+    --a1:#6c63ff; --a2:#00d4aa; --a3:#ff6b6b; --a4:#ffd166;
+    --text:#e8eaf6; --sub:#8b90b8;
+    --green:#4ecca3; --red:#ff6b6b; --yellow:#ffd166;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI','Hiragino Sans','Yu Gothic',sans-serif}
+
+  /* ── HEADER ── */
+  .hdr{background:linear-gradient(135deg,#1a1d27,#22263a);border-bottom:1px solid var(--border);
+    padding:14px 26px;display:flex;align-items:center;justify-content:space-between;
+    position:sticky;top:0;z-index:100;}
+  .hdr-l{display:flex;align-items:center;gap:12px}
+  .hdr-ico{width:40px;height:40px;background:linear-gradient(135deg,var(--a1),var(--a2));
+    border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+  .hdr h1{font-size:1.2rem;font-weight:700}
+  .hdr-sub{font-size:.73rem;color:var(--sub);margin-top:2px}
+  .hdr-r{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border-radius:8px;
+    font-size:.8rem;font-weight:600;cursor:pointer;text-decoration:none;transition:all .2s;border:none}
+  .btn-sheet{background:linear-gradient(135deg,#1a6e3a,#22a85a);color:#fff;box-shadow:0 4px 12px rgba(34,168,90,.3)}
+  .btn-sheet:hover{filter:brightness(1.12);transform:translateY(-1px)}
+  .btn-ref{background:rgba(108,99,255,.15);color:var(--a1);border:1px solid rgba(108,99,255,.35)}
+  .btn-ref:hover{background:rgba(108,99,255,.28)}
+  .btn-ref.busy{opacity:.5;pointer-events:none}
+  .badge-live{display:flex;align-items:center;gap:6px;background:rgba(76,204,163,.12);
+    border:1px solid rgba(76,204,163,.3);border-radius:20px;padding:5px 10px;font-size:.71rem;color:var(--green)}
+  .badge-live::before{content:'';width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.3)}}
+
+  /* ── GAS URL SETUP MODAL ── */
+  #setupOverlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;
+    display:flex;align-items:center;justify-content:center;padding:20px}
+  .setup-box{background:var(--card);border:1px solid var(--border);border-radius:18px;
+    padding:36px 40px;max-width:620px;width:100%}
+  .setup-box h2{font-size:1.3rem;margin-bottom:6px}
+  .setup-box p{color:var(--sub);font-size:.85rem;line-height:1.6;margin-bottom:20px}
+  .setup-box label{font-size:.8rem;color:var(--sub);display:block;margin-bottom:6px}
+  .setup-box input{width:100%;background:var(--card2);border:1px solid var(--border);
+    border-radius:8px;padding:11px 14px;color:var(--text);font-size:.85rem;outline:none}
+  .setup-box input:focus{border-color:var(--a1)}
+  .setup-box input::placeholder{color:#555}
+  .setup-hint{background:rgba(108,99,255,.08);border:1px solid rgba(108,99,255,.2);
+    border-radius:10px;padding:14px 16px;margin:18px 0;font-size:.78rem;color:var(--sub);line-height:1.7}
+  .setup-hint strong{color:var(--text)}
+  .btn-save{background:linear-gradient(135deg,var(--a1),#a855f7);color:#fff;
+    padding:12px 28px;border-radius:10px;font-size:.9rem;font-weight:700;
+    cursor:pointer;border:none;width:100%;margin-top:8px;transition:all .2s}
+  .btn-save:hover{filter:brightness(1.1)}
+
+  /* ── LOADING ── */
+  #loadingScreen{position:fixed;inset:0;background:var(--bg);z-index:150;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+  .spinner{width:48px;height:48px;border:4px solid var(--border);border-top-color:var(--a1);
+    border-radius:50%;animation:spin .9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ld-txt{color:var(--sub);font-size:.88rem}
+
+  /* ── ERROR BANNER ── */
+  #errBanner{display:none;background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);
+    color:var(--red);padding:11px 18px;border-radius:9px;margin:14px 24px;font-size:.83rem}
+
+  /* ── MAIN ── */
+  .main{padding:22px 26px;max-width:1600px;margin:0 auto}
+  .sec{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--sub);margin-bottom:11px;display:flex;align-items:center;gap:7px}
+  .sec::before{content:'';width:4px;height:13px;background:linear-gradient(to bottom,var(--a1),var(--a2));border-radius:2px}
+
+  /* KPI */
+  .kpi4{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:22px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:13px;
+    padding:18px 20px;position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s}
+  .kpi:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(0,0,0,.3)}
+  .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+  .kpi.c1::before{background:linear-gradient(90deg,var(--a1),#a855f7)}
+  .kpi.c2::before{background:linear-gradient(90deg,var(--a2),#00b4d8)}
+  .kpi.c3::before{background:linear-gradient(90deg,var(--a4),#ff9f43)}
+  .kpi.c4::before{background:linear-gradient(90deg,var(--a3),#ff4757)}
+  .kpi-lbl{font-size:.74rem;color:var(--sub);margin-bottom:7px}
+  .kpi-val{font-size:1.85rem;font-weight:800;line-height:1}
+  .kpi-val.up{color:var(--green)}.kpi-val.warn{color:var(--yellow)}.kpi-val.dn{color:var(--red)}
+  .kpi-desc{font-size:.73rem;color:var(--sub);margin-top:7px}
+  .kpi-ico{position:absolute;top:14px;right:14px;font-size:1.5rem;opacity:.13}
+  .bar{height:5px;background:rgba(255,255,255,.07);border-radius:10px;overflow:hidden;margin-top:9px}
+  .bar-fill{height:100%;border-radius:10px}
+  .fill-g{background:linear-gradient(90deg,var(--green),#00b4d8)}
+  .fill-y{background:linear-gradient(90deg,var(--yellow),#ff9f43)}
+  .fill-r{background:linear-gradient(90deg,var(--red),#ff4757)}
+  .bar-lbl{font-size:.71rem;margin-top:4px;font-weight:700}
+
+  /* PANEL */
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:18px 20px}
+  .p-title{font-size:.86rem;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:7px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}
+
+  /* URL BOX */
+  .url-box{background:var(--card2);border:1px solid var(--border);border-radius:10px;
+    padding:12px 15px;display:flex;align-items:center;gap:10px;margin-bottom:22px;flex-wrap:wrap}
+  .url-link{color:#7c9ef8;font-size:.8rem;word-break:break-all;text-decoration:none;flex:1}
+  .url-link:hover{text-decoration:underline}
+  .copy-btn{background:rgba(108,99,255,.15);border:1px solid rgba(108,99,255,.3);color:var(--a1);
+    padding:5px 11px;border-radius:7px;font-size:.74rem;cursor:pointer;white-space:nowrap;transition:all .2s}
+  .copy-btn:hover{background:rgba(108,99,255,.28)}
+  .change-btn{background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.3);color:var(--yellow);
+    padding:5px 11px;border-radius:7px;font-size:.74rem;cursor:pointer;white-space:nowrap}
+
+  /* TABLE */
+  .tbl{width:100%;border-collapse:collapse;font-size:.8rem}
+  .tbl th{color:var(--sub);font-weight:600;font-size:.7rem;padding:7px 9px;
+    text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+  .tbl th.c{text-align:center}
+  .tbl td{padding:8px 9px;border-bottom:1px solid rgba(46,50,80,.35)}
+  .tbl td.c{text-align:center}
+  .tbl tr:hover td{background:rgba(108,99,255,.05)}
+  .tbl tr:last-child td{border-bottom:none}
+  .scroll{overflow-x:auto}
+
+  /* BADGE */
+  .bdg{display:inline-block;padding:2px 7px;border-radius:20px;font-size:.74rem;font-weight:700}
+  .bdg-up{background:rgba(76,204,163,.14);color:var(--green);border:1px solid rgba(76,204,163,.3)}
+  .bdg-warn{background:rgba(255,209,102,.14);color:var(--yellow);border:1px solid rgba(255,209,102,.3)}
+  .bdg-dn{background:rgba(255,107,107,.14);color:var(--red);border:1px solid rgba(255,107,107,.3)}
+
+  /* MEMBER CARDS */
+  .cards6{display:grid;grid-template-columns:repeat(3,1fr);gap:13px;margin-bottom:22px}
+  .mcard{background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:15px 17px;transition:transform .2s,box-shadow .2s}
+  .mcard:hover{transform:translateY(-3px);box-shadow:0 9px 24px rgba(0,0,0,.25)}
+  .mc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+  .mc-name{font-size:.9rem;font-weight:700}
+  .mc-rate{font-size:1.3rem;font-weight:800}
+  .mc-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px}
+  .sv{font-size:.95rem;font-weight:700;text-align:center}
+  .sl{font-size:.61rem;color:var(--sub);text-align:center;margin-top:2px}
+
+  /* AVATAR */
+  .av{display:inline-flex;align-items:center;gap:7px}
+  .av-dot{width:25px;height:25px;border-radius:50%;display:inline-flex;align-items:center;
+    justify-content:center;font-size:.66rem;font-weight:700;color:#fff;flex-shrink:0}
+
+  /* CHART */
+  .ch{position:relative;height:240px}
+  .ch-t{position:relative;height:290px}
+
+  /* UNIT */
+  .udr{display:flex;justify-content:space-between;font-size:.78rem;color:var(--sub);margin-bottom:7px}
+  .udr span:last-child{color:var(--text);font-weight:600}
+
+  /* DAY */
+  .dsun{color:#ff6b6b}.dsat{color:#6c63ff}
+
+  /* FOOTER */
+  .footer{text-align:center;color:var(--sub);font-size:.71rem;padding:18px;
+    border-top:1px solid var(--border);margin-top:6px}
+
+  @media(max-width:1100px){.kpi4{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.cards6{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:600px){.kpi4{grid-template-columns:1fr 1fr}.cards6{grid-template-columns:1fr 1fr}.main{padding:12px}}
+</style>
+</head>
+<body>
+
+<!-- ── GAS URL セットアップモーダル ── -->
+<div id="setupOverlay">
+  <div class="setup-box">
+    <h2>🔧 GAS Web App URL を設定</h2>
+    <p>Google Apps Script でデプロイした Web App の URL を入力してください。<br>設定は次回以降も保持されます。</p>
+    <div class="setup-hint">
+      <strong>📋 GAS デプロイ手順：</strong><br>
+      ① スプレッドシートのメニュー → <strong>「拡張機能」→「Apps Script」</strong><br>
+      ② 提供された <code>gas_code.js</code> の中身を貼り付けて保存<br>
+      ③ 右上 <strong>「デプロイ」→「新しいデプロイ」</strong><br>
+      ④ 種類：<strong>ウェブアプリ</strong> ／ アクセス：<strong>全員</strong> を選択<br>
+      ⑤ 発行された URL（https://script.google.com/macros/s/...）を下に貼り付け
+    </div>
+    <label>GAS Web App URL</label>
+    <input id="gasUrlInput" type="url"
+      placeholder="https://script.google.com/macros/s/xxxxxxxx/exec" />
+    <button class="btn-save" onclick="saveGasUrl()">✅ 設定して読み込む</button>
+  </div>
+</div>
+
+<!-- ── ローディング ── -->
+<div id="loadingScreen" style="display:none">
+  <div class="spinner"></div>
+  <div class="ld-txt" id="ldTxt">GASからデータ取得中…</div>
+</div>
+
+<!-- ── HEADER ── -->
+<header class="hdr">
+  <div class="hdr-l">
+    <div class="hdr-ico">📊</div>
+    <div>
+      <h1>秋山ユニット 月間進捗ダッシュボード</h1>
+      <div class="hdr-sub">GAS連携 自動更新版 ｜ <span id="lastUpdate">─</span></div>
+    </div>
+  </div>
+  <div class="hdr-r">
+    <div class="badge-live">GAS LIVE</div>
+    <button class="btn btn-ref" onclick="loadData()" id="refBtn">🔄 手動更新</button>
+    <a class="btn btn-sheet"
+       href="https://docs.google.com/spreadsheets/d/1WBT6exbFvR86TdHlXA7w33ZXcFPUjoVdTjgwy6zYiPM/edit"
+       target="_blank" rel="noopener">📄 スプレッドシートを開く</a>
+  </div>
+</header>
+
+<div id="errBanner"></div>
+
+<main class="main" id="mainContent" style="display:none">
+
+  <!-- URL BOX -->
+  <div class="url-box">
+    <span>⚡</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:.7rem;color:var(--sub);margin-bottom:2px">GAS Web App エンドポイント</div>
+      <a class="url-link" id="gasUrlDisplay" href="#" target="_blank" rel="noopener">─</a>
+    </div>
+    <button class="copy-btn" onclick="copyGasUrl()">📋 URLをコピー</button>
+    <button class="change-btn" onclick="changeGasUrl()">✏️ URL変更</button>
+  </div>
+
+  <!-- KPI -->
+  <div class="sec">ユニット KPI サマリー</div>
+  <div class="kpi4" id="kpiGrid"></div>
+
+  <!-- UNIT PROGRESS -->
+  <div class="sec">ユニット月間進捗</div>
+  <div class="two" id="unitSection"></div>
+
+  <!-- MEMBER TABLE -->
+  <div class="sec">メンバー別 パフォーマンス</div>
+  <div class="panel" style="margin-bottom:22px">
+    <div class="p-title">👤 担当別 進捗状況 &amp; 転換率</div>
+    <div class="scroll"><table class="tbl">
+      <thead><tr>
+        <th>担当</th>
+        <th class="c">本人確認</th><th class="c">商談</th><th class="c">アポ</th>
+        <th class="c">提案</th><th class="c">面談予約</th><th class="c">面談</th><th class="c">受任</th>
+        <th class="c">アポ→提案</th><th class="c">提案→予約</th><th class="c">予約→面談</th><th class="c">面談→受任</th>
+        <th class="c">受任率</th>
+      </tr></thead>
+      <tbody id="memberTbody"></tbody>
+    </table></div>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="sec">チャート分析</div>
+  <div class="two" style="margin-bottom:22px">
+    <div class="panel"><div class="p-title">🏅 ユニット 予約率ランキング（個人別）</div><div id="rankList" style="padding:16px 8px;"></div></div>
+    <div class="panel"><div class="p-title">🏆 提案→受任率 ランキング（個人別）</div><div id="rankList2" style="padding:16px 8px;"></div></div>
+  </div>
+  <div class="sec">📆 当日進捗</div>
+  <div id="todayProgress" style="margin-bottom:22px"></div>
+
+  <!-- INDIVIDUAL CARDS -->
+  <div class="sec">メンバー個人 月間進捗</div>
+  <div class="cards6" id="memberCards"></div>
+
+  <!-- DAILY TABLE -->
+  <div class="sec">日別進捗データ</div>
+  <div class="panel" style="margin-bottom:22px">
+    <div class="p-title">📆 日次進捗 詳細テーブル（3月）</div>
+    <div class="scroll"><table class="tbl">
+      <thead><tr>
+        <th>日付</th><th>曜日</th>
+        <th class="c">提案</th><th class="c">予約</th><th class="c">書戻</th><th class="c">面談</th><th class="c">受任</th>
+        <th class="c">提案→予約率</th><th class="c">予約→面談率</th><th class="c">面談→受任率</th>
+      </tr></thead>
+      <tbody id="dailyTbody"></tbody>
+    </table></div>
+  </div>
+
+</main>
+
+<footer class="footer" id="footerEl" style="display:none">
+  データソース: GAS Web App (Google Apps Script) ←→ Google スプレッドシート ｜ 秋山ユニット 月間進捗ダッシュボード
+</footer>
+
+<script>
+// ============================================================
+//  CONFIG
+// ============================================================
+const LS_KEY = 'akiyama_gas_url';
+const AUTO_MIN = 5;
+let charts = {};
+
+// ============================================================
+//  INIT
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem(LS_KEY);
+  if (saved) {
+    document.getElementById('setupOverlay').style.display = 'none';
+    loadData();
+  }
+  // pre-fill input if exists
+  if (saved) document.getElementById('gasUrlInput').value = saved;
+});
+
+// ============================================================
+//  SETUP
+// ============================================================
+function saveGasUrl() {
+  const url = document.getElementById('gasUrlInput').value.trim();
+  if (!url.startsWith('https://')) {
+    alert('正しいGAS Web App URLを入力してください（https://...）');
+    return;
+  }
+  localStorage.setItem(LS_KEY, url);
+  document.getElementById('setupOverlay').style.display = 'none';
+  loadData();
+}
+
+function changeGasUrl() {
+  document.getElementById('gasUrlInput').value = localStorage.getItem(LS_KEY) || '';
+  document.getElementById('setupOverlay').style.display = 'flex';
+}
+
+// ============================================================
+//  FETCH FROM GAS
+// ============================================================
+async function loadData() {
+  const gasUrl = localStorage.getItem(LS_KEY);
+  if (!gasUrl) { document.getElementById('setupOverlay').style.display = 'flex'; return; }
+
+  const btn = document.getElementById('refBtn');
+  btn.classList.add('busy'); btn.textContent = '⏳ 取得中…';
+
+  document.getElementById('loadingScreen').style.display = 'flex';
+  document.getElementById('errBanner').style.display = 'none';
+
+  try {
+    // GAS はリダイレクトするので redirect:'follow' が必要
+    const res = await fetch(gasUrl, { redirect: 'follow' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    renderAll(data);
+
+    const ts = data.updatedAt ? new Date(data.updatedAt) : new Date();
+    document.getElementById('lastUpdate').textContent =
+      '最終更新: ' + ts.toLocaleString('ja-JP', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
+
+    // URL display
+    document.getElementById('gasUrlDisplay').textContent = gasUrl;
+    document.getElementById('gasUrlDisplay').href = gasUrl;
+
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('mainContent').style.display = 'block';
+    document.getElementById('footerEl').style.display = 'block';
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('mainContent').style.display = 'block';
+    document.getElementById('footerEl').style.display = 'block';
+    const eb = document.getElementById('errBanner');
+    eb.style.display = 'block';
+    eb.innerHTML = `⚠️ GAS からのデータ取得に失敗しました。<br>
+      エラー: <code>${err.message}</code><br>
+      <small>GASのデプロイ設定（アクセス: 全員）を確認してください。</small>`;
+  }
+
+  btn.classList.remove('busy'); btn.textContent = '🔄 手動更新';
+}
+
+setInterval(loadData, AUTO_MIN * 60 * 1000);
+
+// ============================================================
+//  HELPERS
+// ============================================================
+Chart.defaults.color = '#8b90b8';
+Chart.defaults.borderColor = '#2e3250';
+Chart.defaults.font.family = "'Segoe UI','Hiragino Sans','Yu Gothic',sans-serif";
+
+const pct = s => parseFloat(String(s).replace('%','')) || 0;
+const nv  = s => parseFloat(String(s).replace(/[^0-9.\-]/g,'')) || 0;
+const av  = ['linear-gradient(135deg,#6c63ff,#a855f7)',
+             'linear-gradient(135deg,#00d4aa,#00b4d8)',
+             'linear-gradient(135deg,#ffd166,#ff9f43)',
+             'linear-gradient(135deg,#4ecca3,#2dd4bf)',
+             'linear-gradient(135deg,#ff6b6b,#ff4757)',
+             'linear-gradient(135deg,#a855f7,#7c3aed)'];
+
+function rateClass(v){ return v>=100?'up':v>=70?'warn':'dn'; }
+function fillClass(v){ return v>=100?'fill-g':v>=70?'fill-y':'fill-r'; }
+function valColor(v){ return v>=100?'var(--green)':v>=70?'var(--yellow)':'var(--red)'; }
+function badge(s){
+  const v=pct(s);
+  const cl=v>=100?'bdg-up':v>=70?'bdg-warn':'bdg-dn';
+  return `<span class="bdg ${cl}">${s||'-'}</span>`;
+}
+function dc(ch){ return ch==='日'?'dsun':ch==='土'?'dsat':''; }
+function killChart(id){ if(charts[id]){charts[id].destroy();delete charts[id];} }
+
+// ============================================================
+//  RENDER
+// ============================================================
+function renderAll(d) {
+  const { leftUnit:L, rightUnit:R, members, daily, individuals:indiv, todayProgress:TD } = d;
+  const lv = pct(L.rate), rv = pct(R.rate);
+  const total = members.find(m=>m.isTotal) || {};
+  const mems  = members.filter(m=>!m.isTotal);
+
+  // ── KPI ──
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi c1"><div class="kpi-ico">🎯</div>
+      <div class="kpi-lbl">月間受任 実績（組織コミット）</div>
+      <div class="kpi-val ${rateClass(lv)}">${L.actual}</div>
+      <div class="kpi-desc">目標 ${L.target}</div>
+      <div class="bar"><div class="bar-fill ${fillClass(lv)}" style="width:${Math.min(lv,100)}%"></div></div>
+      <div class="bar-lbl" style="color:${valColor(lv)}">進捗率 ${L.rate} ${lv>=100?'✅':'⚠️'}</div>
+    </div>
+    <div class="kpi c2"><div class="kpi-ico">📈</div>
+      <div class="kpi-lbl">月間受任 実績（個人コミット）</div>
+      <div class="kpi-val ${rateClass(rv)}">${R.actual}</div>
+      <div class="kpi-desc">目標 ${R.target} ／ 進捗 ${R.progress}</div>
+      <div class="bar"><div class="bar-fill ${fillClass(rv)}" style="width:${Math.min(rv,100)}%"></div></div>
+      <div class="bar-lbl" style="color:${valColor(rv)}">進捗率 ${R.rate} ${rv>=100?'✅':'⚠️'}</div>
+    </div>
+    <div class="kpi c3"><div class="kpi-ico">👥</div>
+      <div class="kpi-lbl">メンバー合計 受任数</div>
+      <div class="kpi-val up">${total.juunin||'-'}</div>
+      <div class="kpi-desc">提案 ${total.teian||'-'} ／ 面談 ${total.mendan||'-'}</div>
+      <div class="bar"><div class="bar-fill fill-g" style="width:${Math.min(pct(total.juunin_rate),100)}%"></div></div>
+      <div class="bar-lbl" style="color:var(--sub)">面談→受任率 ${total.juunin_rate||'-'}</div>
+    </div>
+    <div class="kpi c4"><div class="kpi-ico">📅</div>
+      <div class="kpi-lbl">出勤状況</div>
+      <div class="kpi-val warn">${R.currentDays||'-'}</div>
+      <div class="kpi-desc">月間 ${R.workDays||'-'} ／ 1日必要（個人）${R.dailyReq||'-'}</div>
+      <div class="bar"><div class="bar-fill fill-y" style="width:${R.workDays?Math.min(nv(R.currentDays)/nv(R.workDays)*100,100):0}%"></div></div>
+      <div class="bar-lbl" style="color:var(--sub)">${R.currentDays||'-'} / ${R.workDays||'-'} ／ 組織 ${L.dailyReq||'-'}</div>
+    </div>`;
+
+  // ── UNIT PANELS ──
+  const weekTbl = (arr) => arr.map(w=>{
+    const pc = w.progress.startsWith('-')?'color:var(--red)':'color:var(--green)';
+    return `<tr><td>${w.period}</td><td>${w.needed}</td><td>${w.actual}</td>
+      <td style="${pc}">${w.progress}</td><td>${badge(w.rate)}</td></tr>`;
+  }).join('');
+
+  document.getElementById('unitSection').innerHTML = `
+    <div class="panel">
+      <div class="p-title">🏢 秋山ユニット 組織コミット</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+        <div><div style="font-size:.72rem;color:var(--sub)">月間目標</div><div style="font-size:1.35rem;font-weight:800">${L.target}</div></div>
+        <div style="text-align:right"><div style="font-size:.72rem;color:var(--sub)">進捗率</div>
+          <div style="font-size:1.6rem;font-weight:800;color:${valColor(lv)}">${L.rate}</div></div>
+      </div>
+      <div class="bar" style="height:8px;margin-bottom:12px"><div class="bar-fill ${fillClass(lv)}" style="height:8px;width:${Math.min(lv,100)}%"></div></div>
+      <div class="udr"><span>現在必要数</span><span>${L.needed}</span></div>
+      <div class="udr"><span>実績</span><span>${L.actual}</span></div>
+      <div class="udr"><span>進捗</span><span style="${L.progress.startsWith('-')?'color:var(--red)':'color:var(--green)'}">${L.progress}</span></div>
+      <div class="udr"><span>月間出勤日数</span><span>${L.workDays||'-'}</span></div>
+      <div class="udr"><span>1日必要受任数</span><span>${L.dailyReq||'-'}</span></div>
+      <div class="udr"><span>現在出勤数</span><span>${L.currentDays||'-'}</span></div>
+      <div style="margin:13px 0 6px;font-size:.7rem;color:var(--sub)">週間進捗</div>
+      <table class="tbl"><thead><tr><th>期間</th><th>必要数</th><th>実績</th><th>進捗</th><th>進捗率</th></tr></thead>
+      <tbody>${weekTbl(L.weekly)}</tbody></table>
+    </div>
+    <div class="panel">
+      <div class="p-title">👤 秋山ユニット 個人コミット</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+        <div><div style="font-size:.72rem;color:var(--sub)">月間目標</div><div style="font-size:1.35rem;font-weight:800">${R.target}</div></div>
+        <div style="text-align:right"><div style="font-size:.72rem;color:var(--sub)">進捗率</div>
+          <div style="font-size:1.6rem;font-weight:800;color:${valColor(rv)}">${R.rate}</div></div>
+      </div>
+      <div class="bar" style="height:8px;margin-bottom:12px"><div class="bar-fill ${fillClass(rv)}" style="height:8px;width:${Math.min(rv,100)}%"></div></div>
+      <div class="udr"><span>現在必要数</span><span>${R.needed}</span></div>
+      <div class="udr"><span>実績</span><span>${R.actual}</span></div>
+      <div class="udr"><span>進捗</span><span style="${R.progress.startsWith('-')?'color:var(--red)':'color:var(--green)'}">${R.progress}</span></div>
+      <div class="udr"><span>月間出勤日数</span><span>${R.workDays}</span></div>
+      <div class="udr"><span>1日必要受任数</span><span>${R.dailyReq}</span></div>
+      <div class="udr"><span>現在出勤数</span><span>${R.currentDays}</span></div>
+      <div style="margin:13px 0 6px;font-size:.7rem;color:var(--sub)">週間進捗</div>
+      <table class="tbl"><thead><tr><th>期間</th><th>必要数</th><th>実績</th><th>進捗</th><th>進捗率</th></tr></thead>
+      <tbody>${weekTbl(R.weekly)}</tbody></table>
+    </div>`;
+
+  // ── MEMBER TABLE ──
+  const all = [...mems, total].filter(m=>m.name);
+  document.getElementById('memberTbody').innerHTML = all.map((m,i)=>{
+    const tot = m.isTotal;
+    const bg = tot?'style="background:rgba(108,99,255,.08);font-weight:700"':'';
+    const ini = m.name.charAt(0);
+    return `<tr ${bg}>
+      <td><div class="av"><div class="av-dot" style="background:${av[i%av.length]}">${ini}</div>${m.name}</div></td>
+      <td class="c">${m.honin}</td><td class="c">${m.shodan}</td><td class="c">${m.apo}</td>
+      <td class="c">${m.teian}</td><td class="c">${m.yoyaku}</td><td class="c">${m.mendan}</td>
+      <td class="c"><strong>${m.juunin}</strong></td>
+      <td class="c">${badge(m.r_apo_teian)}</td><td class="c">${badge(m.r_teian_yoyaku)}</td>
+      <td class="c">${badge(m.r_yoyaku_mendan)}</td><td class="c">${badge(m.r_mendan_juunin)}</td>
+      <td class="c">${badge(m.juunin_rate)}</td>
+    </tr>`;
+  }).join('');
+
+  // ── CHARTS ──
+  const names = mems.map(m=>m.name);
+
+  // ── ユニット予約率ランキング（提案→予約率 で降順ソート）──
+  const rankData = mems
+    .map(m => ({ name: m.name, rate: pct(m.r_teian_yoyaku), raw: m.r_teian_yoyaku }))
+    .sort((a, b) => b.rate - a.rate);
+  const rankMedal  = ['🥇','🥈','🥉'];
+  const rankBgCol  = [
+    'linear-gradient(90deg,rgba(255,209,102,.18),rgba(255,209,102,.04))',
+    'linear-gradient(90deg,rgba(192,192,192,.18),rgba(192,192,192,.04))',
+    'linear-gradient(90deg,rgba(205,127,50,.18),rgba(205,127,50,.04))',
+  ];
+  const rankTextCol = ['#ffd166','#c8c8c8','#e0a060'];
+  const rankListEl = document.getElementById('rankList');
+  rankListEl.innerHTML = rankData.map((m, i) => {
+    const medal   = rankMedal[i] || '';
+    const rankNum = i + 1;
+    const bg      = rankBgCol[i] || (m.rate >= 70
+      ? 'linear-gradient(90deg,rgba(76,204,163,.15),rgba(76,204,163,.03))'
+      : 'linear-gradient(90deg,rgba(255,107,107,.15),rgba(255,107,107,.03))');
+    const col     = rankTextCol[i] || (m.rate >= 70 ? '#4ecca3' : '#ff6b6b');
+    const barW    = Math.min(100, m.rate);
+    return `
+      <div style="
+        display:flex; align-items:center; justify-content:space-between;
+        background:${bg}; border-left:4px solid ${col};
+        border-radius:10px; padding:14px 20px; margin-bottom:10px;
+        position:relative; overflow:hidden;
+      ">
+        <div style="position:absolute;left:0;top:0;height:100%;width:${barW}%;background:${col};opacity:.07;pointer-events:none;"></div>
+        <div style="display:flex;align-items:center;gap:12px;z-index:1;">
+          <span style="font-size:1.7rem;line-height:1;">${medal || rankNum}</span>
+          <div>
+            <div style="font-size:.72rem;color:#8b90b8;font-weight:600;letter-spacing:.05em;">${rankNum}位</div>
+            <div style="font-size:1.15rem;font-weight:700;color:#e8eaf6;">${m.name}<span style="font-size:.9rem;color:#8b90b8;">さん</span></div>
+          </div>
+        </div>
+        <div style="text-align:right;z-index:1;">
+          <div style="font-size:1.55rem;font-weight:800;color:${col};letter-spacing:-.02em;">${m.rate.toFixed(1)}<span style="font-size:.85rem;">%</span></div>
+          <div style="font-size:.68rem;color:#8b90b8;">提案→予約率</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // ── 提案→受任率ランキング（teian / juunin から計算・降順ソート）──
+  const rankData2 = mems
+    .filter(m => !m.isTotal)
+    .map(m => {
+      const t = parseFloat(String(m.teian).replace(/[^0-9.]/g,'')) || 0;
+      const j = parseFloat(String(m.juunin).replace(/[^0-9.]/g,'')) || 0;
+      const rate = t > 0 ? (j / t * 100) : 0;
+      return { name: m.name, rate: rate };
+    })
+    .sort((a, b) => b.rate - a.rate);
+  const rankMedal2  = ['🥇','🥈','🥉'];
+  const rankBgCol2  = [
+    'linear-gradient(90deg,rgba(255,209,102,.18),rgba(255,209,102,.04))',
+    'linear-gradient(90deg,rgba(192,192,192,.18),rgba(192,192,192,.04))',
+    'linear-gradient(90deg,rgba(205,127,50,.18),rgba(205,127,50,.04))',
+  ];
+  const rankTextCol2 = ['#ffd166','#c8c8c8','#e0a060'];
+  const rankListEl2 = document.getElementById('rankList2');
+  rankListEl2.innerHTML = rankData2.map((m, i) => {
+    const medal = rankMedal2[i] || '';
+    const rankNum = i + 1;
+    const bg  = rankBgCol2[i] || (m.rate >= 50
+      ? 'linear-gradient(90deg,rgba(76,204,163,.15),rgba(76,204,163,.03))'
+      : 'linear-gradient(90deg,rgba(255,107,107,.15),rgba(255,107,107,.03))');
+    const col = rankTextCol2[i] || (m.rate >= 50 ? '#4ecca3' : '#ff6b6b');
+    const barW = Math.min(100, m.rate);
+    return `
+      <div style="
+        display:flex; align-items:center; justify-content:space-between;
+        background:${bg}; border-left:4px solid ${col};
+        border-radius:10px; padding:14px 20px; margin-bottom:10px;
+        position:relative; overflow:hidden;
+      ">
+        <div style="position:absolute;left:0;top:0;height:100%;width:${barW}%;background:${col};opacity:.07;pointer-events:none;"></div>
+        <div style="display:flex;align-items:center;gap:12px;z-index:1;">
+          <span style="font-size:1.7rem;line-height:1;">${medal || rankNum}</span>
+          <div>
+            <div style="font-size:.72rem;color:#8b90b8;font-weight:600;letter-spacing:.05em;">${rankNum}位</div>
+            <div style="font-size:1.15rem;font-weight:700;color:#e8eaf6;">${m.name}<span style="font-size:.9rem;color:#8b90b8;">さん</span></div>
+          </div>
+        </div>
+        <div style="text-align:right;z-index:1;">
+          <div style="font-size:1.55rem;font-weight:800;color:${col};letter-spacing:-.02em;">${m.rate.toFixed(1)}<span style="font-size:.85rem;">%</span></div>
+          <div style="font-size:.68rem;color:#8b90b8;">提案→受任率</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // ── 当日進捗パネル（B19:C22 直接参照）──
+  (function() {
+    if (!TD) return;
+
+    const toNum = v => parseFloat(String(v||'').replace(/[^0-9.]/g,'')) || 0;
+    const calcPct = (a, t) => t > 0 ? (a / t * 100) : null;
+    const fmtP   = v => v !== null ? v.toFixed(1) + '%' : '-';
+
+    const items = [
+      { icon:'📋', label:'提案数', key:'teian',  col:'#6c63ff' },
+      { icon:'📅', label:'予約数', key:'yoyaku', col:'#00b4d8' },
+      { icon:'🤝', label:'面談数', key:'mendan', col:'#00d4aa' },
+      { icon:'🏆', label:'受任数', key:'juunin', col:'#4ecca3' },
+    ].map(item => {
+      const tgt = toNum(TD[item.key].target);
+      const act = toNum(TD[item.key].actual);
+      const p   = calcPct(act, tgt);
+      return { ...item, tgt, act, p };
+    });
+
+    const cardHTML = items.map(item => {
+      const p    = item.p;
+      const pStr = fmtP(p);
+      const barW = p !== null ? Math.min(p, 100) : 0;
+      const textCol = p === null ? '#8b90b8'
+                    : p >= 100  ? '#4ecca3'
+                    : p >= 70   ? '#ffd166'
+                    :             '#ff6b6b';
+      const barCol  = p === null ? '#2e3250'
+                    : p >= 100  ? 'linear-gradient(90deg,#4ecca3,#00d4aa)'
+                    : p >= 70   ? 'linear-gradient(90deg,#ffd166,#ff9f43)'
+                    :             'linear-gradient(90deg,#ff6b6b,#ff4757)';
+      const badge   = p !== null && p >= 100 ? '<span style="font-size:.65rem;background:#4ecca322;color:#4ecca3;border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:700;">達成</span>'
+                    : p !== null && p >= 70  ? '<span style="font-size:.65rem;background:#ffd16622;color:#ffd166;border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:700;">順調</span>'
+                    : p !== null             ? '<span style="font-size:.65rem;background:#ff6b6b22;color:#ff6b6b;border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:700;">要注意</span>'
+                    : '';
+      return `
+      <div style="
+        background:var(--card); border:1px solid var(--border); border-radius:16px;
+        padding:22px 24px; position:relative; overflow:hidden;
+        border-top:3px solid ${item.col}; flex:1; min-width:180px;
+        transition:transform .2s,box-shadow .2s;
+      "
+      onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 12px 32px rgba(0,0,0,.35)'"
+      onmouseout="this.style.transform='';this.style.boxShadow=''">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at top left,${item.col}0d,transparent 60%);pointer-events:none;"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:1.4rem;">${item.icon}</span>
+            <span style="font-size:.85rem;font-weight:700;color:var(--sub);letter-spacing:.05em;">${item.label}</span>
+          </div>
+          ${badge}
+        </div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px;">
+          <span style="font-size:2.4rem;font-weight:800;color:#e8eaf6;line-height:1;">${item.act}</span>
+          <span style="font-size:1rem;color:#8b90b8;">/ ${item.tgt}</span>
+          <span style="font-size:1.2rem;font-weight:700;color:${textCol};margin-left:auto;">進捗 ${pStr}</span>
+        </div>
+        <div style="height:8px;background:#1e2140;border-radius:99px;overflow:hidden;">
+          <div style="height:100%;width:${barW}%;background:${barCol};border-radius:99px;transition:width .6s ease;"></div>
+        </div>
+        <div style="font-size:.7rem;color:#8b90b8;margin-top:8px;">実数 / 目標（スプレッドシート B/C列 19〜22行「直接参照）</div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('todayProgress').innerHTML = `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 20px;margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:1.1rem;">📆</span>
+        <span style="font-weight:700;color:#e8eaf6;">当日進捗</span>
+        <span style="font-size:.75rem;color:#8b90b8;margin-left:4px;">※ 提案目標B19 / 予約目標B20 / 面談目標B21 / 受任目標B22 — 実数C19〜C22</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;">${cardHTML}</div>`;
+  })();
+
+  // ── INDIVIDUAL CARDS ──
+  document.getElementById('memberCards').innerHTML = indiv.map((m,i)=>{
+    const r=pct(m.rate);
+    const col=valColor(r);
+    const bc=r>=100?'#4ecca3':r>=70?'#ffd166':'#ff6b6b';
+    const pg=m.progress||'';
+    const pgc=pg.startsWith('-')?'color:var(--red)':'color:var(--green)';
+    const crown=r>=130?' 🏅':'';
+    return `<div class="mcard" style="border-top:3px solid ${bc}">
+      <div class="mc-top">
+        <div><div class="mc-name">${m.name}${crown}</div><div style="font-size:.7rem;color:var(--sub)">目標: ${m.target}</div></div>
+        <div class="mc-rate" style="color:${col}">${m.rate}</div>
+      </div>
+      <div class="bar"><div class="bar-fill ${fillClass(r)}" style="width:${Math.min(r,100)}%"></div></div>
+      <div class="mc-stats">
+        <div><div class="sv" style="color:${col}">${m.actual}</div><div class="sl">実績</div></div>
+        <div><div class="sv" style="${pgc}">${m.progress}</div><div class="sl">進捗</div></div>
+        <div><div class="sv">${m.needed}</div><div class="sl">必要数</div></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── DAILY TABLE ──
+  document.getElementById('dailyTbody').innerHTML = daily.map(d=>{
+    const r1=d.teian>0?(d.yoyaku/d.teian*100).toFixed(1)+'%':'-';
+    const r2=d.yoyaku>0?(d.mendan/d.yoyaku*100).toFixed(1)+'%':'-';
+    const r3=d.mendan>0?(d.juunin/d.mendan*100).toFixed(1)+'%':'-';
+    const r3c=d.mendan>0?(d.juunin/d.mendan>=.8?'var(--green)':d.juunin/d.mendan>=.6?'var(--yellow)':'var(--red)'):'';
+    return `<tr>
+      <td><strong>${d.date}</strong></td>
+      <td class="${dc(d.day)}">${d.day}</td>
+      <td class="c">${d.teian}</td><td class="c">${d.yoyaku}</td>
+      <td class="c">${d.kakimodoshi}</td><td class="c">${d.mendan}</td>
+      <td class="c"><strong>${d.juunin}</strong></td>
+      <td class="c">${r1}</td><td class="c">${r2}</td>
+      <td class="c" style="color:${r3c};font-weight:700">${r3}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── COPY ──
+function copyGasUrl(){
+  const url=localStorage.getItem(LS_KEY)||'';
+  navigator.clipboard.writeText(url).then(()=>{
+    const b=document.querySelector('.copy-btn');
+    b.textContent='✅ コピー済み';
+    setTimeout(()=>b.textContent='📋 URLをコピー',2000);
+  });
+}
+</script>
+</body>
+</html>
